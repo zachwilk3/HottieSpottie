@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <meta name="theme-color" content="#06060a"/>
+  <title>Hottie Spottie</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@700&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:#020204;display:flex;justify-content:center;align-items:center;min-height:100vh;}
+    ::-webkit-scrollbar{width:0;}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+const MAPBOX_TOKEN = “pk.eyJ1IjoiemFjaHdpbGsiLCJhIjoiY21vc3c1cHllMDExaTJ4b2E4bjJmMnlwOSJ9.GkF8XC6PW_TOdRbmvHFA0w”;
+const SUPABASE_URL = “https://clkcxytwgeivzvbqgnqd.supabase.co”;
+const SUPABASE_KEY = “eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNsa2N4eXR3Z2Vpdnp2YnFnbnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5OTI4NDcsImV4cCI6MjA5MzU2ODg0N30.LEq_TeDBN5VH0Le1uHKN17brjkUs7eYyf8p76fQgQH8”;
+
+const VENUE_COORDS = {
+“Trader Joe’s”:[-111.891,40.7589],“Lake Effect”:[-111.8654,40.7219],
+“Twilite Bar”:[-111.8983,40.7528],“Publik Coffee”:[-111.8765,40.7487],
+“Fisher Brewing”:[-111.9012,40.7445],“Liberty Park”:[-111.8712,40.7385],
+“London Belle”:[-111.8934,40.7601],“Water Witch”:[-111.9034,40.7461],
+“Harmons Downtown”:[-111.8901,40.7612],“The Rose Establishment”:[-111.9028,40.7449],
+};
+
+const PEAK = {
+“Trader Joe’s”:“5-7 PM”,“Lake Effect”:“9 PM-close”,“Twilite Bar”:“10 PM-2 AM”,
+“Publik Coffee”:“8-11 AM”,“Fisher Brewing”:“6-9 PM”,“Liberty Park”:“7-9 AM & 5 PM”,
+“London Belle”:“7-10 PM”,“Water Witch”:“8 PM-midnight”,“Harmons Downtown”:“12-1 PM”,
+“The Rose Establishment”:“9 AM-noon”,
+};
+
+// ─── Supabase helpers ─────────────────────────────────────────────────────────
+const sb = async (path, opts={}) => {
+const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,“Content-Type”:“application/json”,Prefer:opts.prefer||“return=representation”,…(opts.headers||{})},
+…opts,
+});
+const text = await res.text();
+return text ? JSON.parse(text) : null;
+};
+const sbAuth = async (path, body) => {
+const res = await fetch(`${SUPABASE_URL}/auth/v1/${path}`, {
+method:“POST”,headers:{apikey:SUPABASE_KEY,“Content-Type”:“application/json”},body:JSON.stringify(body),
+});
+return res.json();
+};
+
+// ─── Static data ──────────────────────────────────────────────────────────────
+const HOTTIE_TYPES = [
+{id:“gym_bunny”,label:“Gym Bunny”,emoji:“💪”,color:”#FF6B6B”},
+{id:“nerdy_cute”,label:“Nerdy Cute”,emoji:“🤓”,color:”#6B9EFF”},
+{id:“mysterious”,label:“Mysterious Stranger”,emoji:“🖤”,color:”#C084FC”},
+{id:“golden”,label:“Golden Retriever”,emoji:“🌟”,color:”#FFD93D”},
+{id:“finance”,label:“Finance Bro Adjacent”,emoji:“💼”,color:”#34D399”},
+{id:“alt”,label:“Alt Hottie”,emoji:“💀”,color:”#F87171”},
+{id:“cowboy”,label:“Cowboy Crush”,emoji:“🤠”,color:”#D4A574”},
+{id:“model”,label:“Model Off Duty”,emoji:“✨”,color:”#F472B6”},
+{id:“soft_launch”,label:“Soft Launch Material”,emoji:“🌸”,color:”#FB7185”},
+{id:“danger”,label:“Certified Danger”,emoji:“🔥”,color:”#FF4500”},
+];
+const SPARK_COLORS = [
+{name:“Electric Lime”,hex:”#CCFF00”,text:”#000”},{name:“Hot Coral”,hex:”#FF4D6D”,text:”#fff”},
+{name:“Neon Cyan”,hex:”#00F5FF”,text:”#000”},{name:“Inferno Orange”,hex:”#FF6B00”,text:”#000”},
+{name:“Violet Pulse”,hex:”#BF5FFF”,text:”#fff”},{name:“Acid Yellow”,hex:”#FFE500”,text:”#000”},
+];
+const APPROACH_SCRIPTS = [
+“Are you my Hottie Spottie assignment?”,
+“I came to verify a sighting. It checks out.”,
+“My app told me to come say hi. Blame the algorithm.”,
+“You look exactly like my next poor decision.”,
+];
+const REWARDS = [
+{pts:250,icon:“🥗”,label:“Half Off Appetizer”,venues:“Any partner venue”},
+{pts:500,icon:“🍰”,label:“Free Dessert”,venues:“Rose, Publik, London Belle”},
+{pts:1000,icon:“🍽”,label:“Free Entree”,venues:“London Belle, Fisher, Lake Effect”},
+{pts:2500,icon:“🎟”,label:“Free Club Entry”,venues:“Twilite, Lake Effect, Water Witch”},
+{pts:5000,icon:“💳”,label:”$50 Gift Card”,venues:“Any partner venue”},
+];
+const BONUS_POOL = [
+{pts:25,msg:“They noticed you noticing.”,emoji:“👀”},
+{pts:50,msg:“Nice spot.”,emoji:“🎯”},
+{pts:75,msg:“Certified move.”,emoji:“😏”},
+{pts:100,msg:“Legendary spotter energy.”,emoji:“👑”},
+{pts:150,msg:“The city thanks you.”,emoji:“🏙”},
+];
+const SURGE_MSGS = [
+“🔥 Twilite Bar is SURGING right now”,
+“⚡ Water Witch just hit Hottie HQ”,
+“💌 Flirts dropping at Lake Effect”,
+“🚨 Spark activity near you”,
+“🌡 London Belle heating up fast”,
+];
+const ONBOARD_SLIDES = [
+{bg:“radial-gradient(ellipse at 50% 30%,rgba(255,0,85,0.22) 0%,#06060a 62%)”,emoji:“🗺️”,title:“See where the\nhotties are. Live.”,body:“Hottie Spottie is a real-time heat map of attraction across Salt Lake City. Check it before you go out. Know exactly where to be.”,cta:“Tell me more”,tag:“DISCOVER”},
+{bg:“radial-gradient(ellipse at 50% 30%,rgba(255,107,0,0.18) 0%,#06060a 62%)”,emoji:“📍”,title:“Spot one.\nDrop a Flirt.”,body:“When you are there, mark a hottie on the map anonymously. That grows the hotspot. Feeling brave? Leave a Flirt. They might find it.”,cta:“One more”,tag:“SPOT + FLIRT”},
+{bg:“radial-gradient(ellipse at 50% 30%,rgba(100,0,255,0.16) 0%,#06060a 62%)”,emoji:“✨”,title:“Wink. Spark.\nGo say hi.”,body:“Turn on Wink Mode when open to being approached. Mutual winks become Sparks — both phones glow the same color. Find yours in the room.”,cta:“Find the heat”,tag:“CONNECT”},
+];
+
+const getHeat = (n) => n>=50?5:n>=30?4:n>=20?3:n>=10?2:1;
+const getStatus = (h) => [“Warm”,“Heating Up”,“Currently Cute”,“Certified Hotspot”,“Hottie HQ”][h-1]||“Warm”;
+const getTypeColor = (n) => HOTTIE_TYPES.find(t=>t.label===n)?.color||”#FF69B4”;
+const getTypeEmoji = (n) => HOTTIE_TYPES.find(t=>t.label===n)?.emoji||“❤️”;
+const HOURS = Array.from({length:24},(_,i)=>i===0?“12a”:i<12?`${i}a`:i===12?“12p”:`${i-12}p`);
+
+// ─── Confetti ─────────────────────────────────────────────────────────────────
+const Confetti = ({active}) => {
+if (!active) return null;
+return (
+<div style={{position:“absolute”,inset:0,pointerEvents:“none”,zIndex:9999,overflow:“hidden”}}>
+{Array.from({length:50},(_,i)=>({id:i,x:Math.random()*100,color:[”#FF0055”,”#FF8C42”,”#FFD700”,”#00F5FF”,”#BF5FFF”,”#FF69B4”][i%6],delay:Math.random()*0.8,size:5+Math.random()*8,drift:(Math.random()-0.5)*200})).map(p=>(
+<div key={p.id} style={{position:“absolute”,left:`${p.x}%`,top:0,width:p.size,height:p.size,background:p.color,borderRadius:p.id%2===0?“50%”:“2px”,”–drift”:`${p.drift}px`,animation:`confettiFall 2.2s ease-in ${p.delay}s both`}}/>
+))}
+</div>
+);
+};
+
+// ─── Mapbox Map ───────────────────────────────────────────────────────────────
+const MapboxMap = ({locations, onSelectSpot, newPinIds}) => {
+const mapRef = useRef(null);
+const mapInstance = useRef(null);
+const markersRef = useRef([]);
+const [ready, setReady] = useState(false);
+
+useEffect(()=>{
+if (mapInstance.current || !mapRef.current) return;
+const link = document.createElement(“link”);
+link.rel = “stylesheet”;
+link.href = “https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css”;
+document.head.appendChild(link);
+const script = document.createElement(“script”);
+script.src = “https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js”;
+script.onload = () => {
+if (!mapRef.current) return;
+window.mapboxgl.accessToken = MAPBOX_TOKEN;
+const map = new window.mapboxgl.Map({
+container:mapRef.current,style:“mapbox://styles/mapbox/dark-v11”,
+center:[-111.891,40.752],zoom:12.8,attributionControl:false,
+});
+map.on(“load”,()=>{ mapInstance.current=map; setReady(true); });
+};
+document.head.appendChild(script);
+return ()=>{ if(mapInstance.current){mapInstance.current.remove();mapInstance.current=null;} };
+},[]);
+
+useEffect(()=>{
+if (!ready||!mapInstance.current) return;
+markersRef.current.forEach(m=>m.remove());
+markersRef.current=[];
+locations.forEach(loc=>{
+const coords=VENUE_COORDS[loc.name];
+if (!coords) return;
+const heat=getHeat(loc.sightings);
+const color=getTypeColor(loc.topType);
+const size=[0,26,34,42,52,64][heat];
+const el=document.createElement(“div”);
+el.style.cssText=`width:${size}px;height:${size}px;background:radial-gradient(circle at 35% 35%,${color},${color}88);border-radius:50% 50% 50% 50%/60% 60% 40% 40%;box-shadow:0 0 ${heat*5}px ${color}cc;display:flex;align-items:center;justify-content:center;font-size:${Math.floor(size*0.37)}px;cursor:pointer;position:relative;transition:transform 0.2s;`;
+el.textContent=“❤️”;
+el.onmouseenter=()=>el.style.transform=“scale(1.3)”;
+el.onmouseleave=()=>el.style.transform=“scale(1)”;
+el.onclick=()=>onSelectSpot(loc);
+if (loc.flirtsCount>0) {
+const b=document.createElement(“div”);
+b.style.cssText=`position:absolute;top:-4px;right:-4px;background:#FF0055;border-radius:50%;width:15px;height:15px;display:flex;align-items:center;justify-content:center;font-size:8px;color:white;font-weight:700;`;
+b.textContent=loc.flirtsCount; el.appendChild(b);
+}
+if (heat>=4) {
+const lb=document.createElement(“div”);
+lb.style.cssText=`position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);font-size:10px;white-space:nowrap;color:${color};font-family:sans-serif;font-weight:700;text-shadow:0 0 10px ${color};pointer-events:none;`;
+lb.textContent=loc.name; el.appendChild(lb);
+}
+const marker=new window.mapboxgl.Marker({element:el,anchor:“center”}).setLngLat(coords).addTo(mapInstance.current);
+markersRef.current.push(marker);
+});
+},[ready,locations,newPinIds]);
+
+return (
+<div style={{position:“relative”,margin:“0 16px”,borderRadius:24,overflow:“hidden”,height:320,border:“1px solid rgba(255,255,255,0.08)”}}>
+<div ref={mapRef} style={{width:“100%”,height:“100%”}}/>
+{!ready&&<div style={{position:“absolute”,inset:0,background:”#0c0c15”,display:“flex”,alignItems:“center”,justifyContent:“center”,gap:12}}>
+<div style={{width:24,height:24,border:“3px solid rgba(255,0,85,0.2)”,borderTopColor:”#FF0055”,borderRadius:“50%”,animation:“spin 0.8s linear infinite”}}/>
+<span style={{color:”#444”,fontFamily:“sans-serif”,fontSize:13}}>Loading map…</span>
+</div>}
+<div style={{position:“absolute”,bottom:0,left:0,right:0,height:50,background:“linear-gradient(to top,rgba(6,6,10,0.7),transparent)”,pointerEvents:“none”}}/>
+</div>
+);
+};
+
+// ─── Forecast Chart ───────────────────────────────────────────────────────────
+const FORECAST_DATA = {
+1:[2,3,4,5,3,2,1,3,4,5,4,3,2,1,2,3,5,4,3,2,1,3,4,5],
+2:[0,0,1,1,2,2,3,3,4,5,5,4,3,2,1,1,2,3,4,5,5,4,3,2],
+3:[0,0,0,1,1,2,2,2,3,4,5,5,5,4,3,2,1,2,3,4,5,5,4,3],
+4:[1,2,5,5,4,3,2,1,1,2,2,1,1,1,2,3,4,3,2,1,0,0,0,1],
+5:[0,0,1,1,2,2,3,3,3,4,4,3,3,4,4,5,5,4,3,2,1,1,0,0],
+6:[1,2,5,4,3,2,1,1,1,2,2,2,1,1,2,3,5,4,3,2,1,1,1,1],
+7:[0,0,1,1,2,2,2,3,3,4,4,3,3,3,3,4,5,5,4,3,2,1,0,0],
+8:[0,0,0,1,1,1,2,2,2,3,3,3,3,3,3,3,4,5,5,5,4,3,2,1],
+9:[1,1,2,3,4,4,4,4,4,5,5,5,4,4,3,2,2,2,1,1,1,1,1,1],
+10:[0,1,4,5,5,4,3,2,1,1,1,1,1,1,1,1,2,2,1,1,0,0,0,0],
+};
+const ForecastChart = ({locationId,peakTime}) => {
+const data=FORECAST_DATA[locationId]||Array(24).fill(0);
+const max=Math.max(…data,1);
+const now=new Date().getHours();
+return (
+<div>
+<div style={{display:“flex”,alignItems:“flex-end”,gap:2,height:52,marginBottom:6}}>
+{data.map((v,i)=><div key={i} style={{flex:1,borderRadius:“3px 3px 0 0”,minHeight:3,height:`${Math.max((v/max)*100,6)}%`,background:i===now?“linear-gradient(180deg,#FF0055,#FF6B00)”:v>=4?“rgba(255,0,85,0.45)”:v>=2?“rgba(255,0,85,0.18)”:“rgba(255,255,255,0.04)”,boxShadow:i===now?“0 0 14px rgba(255,0,85,0.7)”:“none”}}/>)}
+</div>
+<div style={{display:“flex”,justifyContent:“space-between”,marginBottom:8}}>
+{[0,6,12,18,23].map(h=><span key={h} style={{fontSize:9,color:”#2a2a35”,fontFamily:“sans-serif”}}>{HOURS[h]}</span>)}
+</div>
+<div style={{display:“flex”,alignItems:“center”,gap:6}}>
+<div style={{width:6,height:6,borderRadius:“50%”,background:”#FF0055”,boxShadow:“0 0 6px #FF0055”}}/>
+<span style={{fontSize:11,color:”#FF0055”,fontFamily:“sans-serif”,fontWeight:700}}>Peak: {peakTime}</span>
+</div>
+</div>
+);
+};
+
+// ─── Mystery Bonus ────────────────────────────────────────────────────────────
+const MysteryBonus = ({bonus,onCollect}) => {
+const [revealed,setRevealed]=useState(false);
+return (
+<div style={{position:“absolute”,inset:0,background:“rgba(0,0,0,0.93)”,zIndex:400,display:“flex”,alignItems:“center”,justifyContent:“center”,padding:28,backdropFilter:“blur(8px)”}}>
+<div style={{width:“100%”,background:“linear-gradient(145deg,#1a0812,#0e0816)”,borderRadius:28,padding:“36px 24px”,textAlign:“center”,border:“1px solid rgba(255,0,85,0.2)”,boxShadow:“0 0 80px rgba(255,0,85,0.18)”,animation:“modalPop 0.4s cubic-bezier(0.34,1.56,0.64,1)”}}>
+{!revealed?(
+<>
+<div style={{fontSize:64,marginBottom:20,animation:“floatY 2s ease-in-out infinite”,display:“inline-block”}}>🎁</div>
+<div style={{fontFamily:“Georgia,serif”,fontSize:28,fontWeight:700,color:“white”,marginBottom:10}}>You earned a little something.</div>
+<div style={{color:”#444”,fontFamily:“sans-serif”,fontSize:14,marginBottom:32,lineHeight:1.8}}>Every spot has its perks. Tap to see yours.</div>
+<button onClick={()=>setRevealed(true)} style={{background:“linear-gradient(135deg,#FF0055,#FF6B00)”,color:“white”,border:“none”,borderRadius:100,padding:“16px 44px”,fontSize:16,fontWeight:700,cursor:“pointer”,fontFamily:“sans-serif”,boxShadow:“0 6px 28px rgba(255,0,85,0.4)”}}>Reveal ✨</button>
+</>
+):(
+<div style={{animation:“modalPop 0.35s cubic-bezier(0.34,1.56,0.64,1)”}}>
+<div style={{fontSize:52,marginBottom:14}}>{bonus.emoji}</div>
+<div style={{color:”#555”,fontFamily:“sans-serif”,fontSize:15,marginBottom:12,fontStyle:“italic”}}>”{bonus.msg}”</div>
+<div style={{fontFamily:“Georgia,serif”,fontSize:68,fontWeight:700,lineHeight:1,marginBottom:4,background:“linear-gradient(135deg,#FF0055,#FF8C42)”,WebkitBackgroundClip:“text”,WebkitTextFillColor:“transparent”}}>+{bonus.pts}</div>
+<div style={{color:”#333”,fontFamily:“sans-serif”,fontSize:12,marginBottom:32,letterSpacing:1,textTransform:“uppercase”}}>bonus points</div>
+<button onClick={onCollect} style={{background:“linear-gradient(135deg,#FF0055,#FF6B00)”,color:“white”,border:“none”,borderRadius:100,padding:“16px 44px”,fontSize:16,fontWeight:700,cursor:“pointer”,fontFamily:“sans-serif”,boxShadow:“0 6px 28px rgba(255,0,85,0.4)”}}>Collect 🎉</button>
+</div>
+)}
+</div>
+</div>
+);
+};
+
+// ─── Spark Screen ─────────────────────────────────────────────────────────────
+const SparkScreen = ({sc,onFound,onExpire}) => {
+const [t,setT]=useState(600);
+const [confirmed,setConfirmed]=useState(false);
+const script=APPROACH_SCRIPTS[Math.floor(Math.random()*APPROACH_SCRIPTS.length)];
+useEffect(()=>{
+const timer=setInterval(()=>setT(s=>{if(s<=1){clearInterval(timer);onExpire();return 0;}return s-1;}),1000);
+return()=>clearInterval(timer);
+},[]);
+const mins=Math.floor(t/60);const secs=t%60;const pct=(t/600)*100;
+if(confirmed) return (
+<div style={{position:“absolute”,inset:0,background:”#06060a”,zIndex:900,display:“flex”,flexDirection:“column”,alignItems:“center”,justifyContent:“center”,padding:32,textAlign:“center”}}>
+<div style={{fontSize:80,marginBottom:20,display:“inline-block”}}>💘</div>
+<div style={{fontFamily:“Georgia,serif”,fontSize:36,fontWeight:700,color:“white”,marginBottom:8}}>You did it.</div>
+<div style={{color:”#444”,fontFamily:“sans-serif”,fontSize:16,marginBottom:32,lineHeight:1.8}}>Now act natural. Or do not. We support chaos.</div>
+<div style={{background:“rgba(255,0,85,0.07)”,border:“1px solid rgba(255,0,85,0.18)”,borderRadius:20,padding:“20px 24px”,marginBottom:28,width:“100%”}}>
+<div style={{color:”#FF0055”,fontFamily:“sans-serif”,fontSize:10,textTransform:“uppercase”,letterSpacing:2,marginBottom:10,fontWeight:700}}>Approach Script</div>
+<div style={{color:“white”,fontFamily:“sans-serif”,fontSize:15,fontStyle:“italic”,lineHeight:1.7}}>”{script}”</div>
+</div>
+<button onClick={onFound} style={{background:“linear-gradient(135deg,#FF0055,#FF6B00)”,color:“white”,border:“none”,borderRadius:100,padding:“16px 44px”,fontSize:16,fontWeight:700,cursor:“pointer”,fontFamily:“sans-serif”,width:“100%”,boxShadow:“0 6px 28px rgba(255,0,85,0.4)”}}>Done 💘</button>
+</div>
+);
+return (
+<div style={{position:“absolute”,inset:0,zIndex:900,display:“flex”,flexDirection:“column”,alignItems:“center”,justifyContent:“center”,padding:32,textAlign:“center”,background:`radial-gradient(ellipse at 50% 35%,${sc.hex}1a 0%,#06060a 65%)`}}>
+<div style={{position:“relative”,marginBottom:40}}>
+<div style={{width:196,height:196,borderRadius:“50%”,background:sc.hex,boxShadow:`0 0 80px ${sc.hex},0 0 160px ${sc.hex}44`,animation:“sparkPulse 2s ease-in-out infinite”,display:“flex”,alignItems:“center”,justifyContent:“center”,position:“relative”}}>
+<div style={{position:“absolute”,inset:-28,borderRadius:“50%”,border:`2px solid ${sc.hex}44`,animation:“ringExpand 2s ease-in-out infinite”}}/>
+<div style={{position:“absolute”,inset:-56,borderRadius:“50%”,border:`1px solid ${sc.hex}22`,animation:“ringExpand 2s ease-in-out infinite 0.6s”}}/>
+<span style={{fontSize:58}}>✨</span>
+</div>
+</div>
+<div style={{color:sc.hex,fontFamily:“sans-serif”,fontSize:10,textTransform:“uppercase”,letterSpacing:3,marginBottom:8,fontWeight:700}}>Your Spark</div>
+<div style={{fontFamily:“Georgia,serif”,fontSize:42,fontWeight:700,color:“white”,marginBottom:10,textShadow:`0 0 40px ${sc.hex}66`}}>{sc.name}</div>
+<div style={{color:”#555”,fontFamily:“sans-serif”,fontSize:16,marginBottom:40,lineHeight:1.8}}>Someone here is glowing {sc.name}.<br/><span style={{color:”#333”}}>Scan the room. Find your color.</span></div>
+<div style={{width:“100%”,marginBottom:28}}>
+<div style={{display:“flex”,justifyContent:“space-between”,marginBottom:8}}>
+<span style={{color:”#333”,fontFamily:“sans-serif”,fontSize:11,textTransform:“uppercase”,letterSpacing:1}}>Signal fades in</span>
+<span style={{color:t<60?”#FF0055”:“white”,fontFamily:“Georgia,serif”,fontSize:24,fontWeight:700}}>{mins}:{String(secs).padStart(2,“0”)}</span>
+</div>
+<div style={{height:3,background:“rgba(255,255,255,0.05)”,borderRadius:2,overflow:“hidden”}}>
+<div style={{height:“100%”,width:`${pct}%`,background:t<60?”#FF0055”:sc.hex,borderRadius:2,transition:“width 1s linear”,boxShadow:`0 0 8px ${sc.hex}`}}/>
+</div>
+</div>
+<button onClick={()=>setConfirmed(true)} style={{background:`linear-gradient(135deg,${sc.hex},${sc.hex}bb)`,color:sc.text,border:“none”,borderRadius:100,padding:“16px 44px”,fontSize:16,fontWeight:700,cursor:“pointer”,fontFamily:“sans-serif”,width:“100%”,marginBottom:12,boxShadow:`0 6px 28px ${sc.hex}55`}}>I found them 👀</button>
+<button onClick={onExpire} style={{background:“none”,border:“1px solid rgba(255,255,255,0.07)”,color:”#333”,borderRadius:100,padding:“12px 32px”,fontSize:14,cursor:“pointer”,fontFamily:“sans-serif”,width:“100%”}}>Signal faded — exit</button>
+</div>
+);
+};
+
+// ─── CSS ──────────────────────────────────────────────────────────────────────
+const CSS = `@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@700&family=DM+Sans:wght@400;600;700&display=swap'); *{box-sizing:border-box;margin:0;padding:0;}::-webkit-scrollbar{width:0;}input,textarea{outline:none;resize:none;} .glow-text{background:linear-gradient(135deg,#FF0055,#FF8C42);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;} .mapboxgl-ctrl-bottom-left,.mapboxgl-ctrl-bottom-right,.mapboxgl-ctrl-logo{display:none!important;} @keyframes confettiFall{0%{transform:translateY(-10px) rotate(0);opacity:1;}100%{transform:translateY(900px) translateX(var(--drift)) rotate(540deg);opacity:0;}} @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.15;}} @keyframes slideUp{from{transform:translateY(22px);opacity:0;}to{transform:translateY(0);opacity:1;}} @keyframes scaleIn{from{transform:scale(0.92);opacity:0;}to{transform:scale(1);opacity:1;}} @keyframes modalPop{from{transform:scale(0.84) translateY(18px);opacity:0;}to{transform:scale(1) translateY(0);opacity:1;}} @keyframes heartBeat{0%,100%{transform:scale(1);}25%{transform:scale(1.22);}75%{transform:scale(1.08);}} @keyframes floatY{0%,100%{transform:translateY(0);}50%{transform:translateY(-11px);}} @keyframes orbFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-18px);}} @keyframes sparkPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.06);}} @keyframes ringExpand{0%{opacity:0.7;transform:scale(1);}100%{opacity:0;transform:scale(1.55);}} @keyframes toastIn{0%{transform:translateX(-50%) translateY(14px);opacity:0;}12%{opacity:1;transform:translateX(-50%) translateY(0);}85%{opacity:1;}100%{opacity:0;}} @keyframes alertSlide{from{transform:translateY(-18px);opacity:0;}to{transform:translateY(0);opacity:1;}} @keyframes tagPop{from{transform:scale(0.7);opacity:0;}to{transform:scale(1);opacity:1;}} @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}} @keyframes pinPulse{0%,100%{transform:translate(-50%,-50%) scale(1);}50%{transform:translate(-50%,-50%) scale(1.1);}} .btn-p{background:linear-gradient(135deg,#FF0055,#FF6B00);color:white;border:none;border-radius:100px;padding:16px 28px;font-size:15px;font-weight:700;cursor:pointer;width:100%;font-family:sans-serif;transition:all 0.2s;box-shadow:0 6px 28px rgba(255,0,85,0.38);} .btn-p:hover{transform:translateY(-2px);box-shadow:0 10px 36px rgba(255,0,85,0.5);} .btn-p:disabled{opacity:0.5;transform:none;} .btn-s{background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.8);border:1px solid rgba(255,255,255,0.1);border-radius:100px;padding:14px 24px;font-size:14px;cursor:pointer;font-family:sans-serif;transition:all 0.2s;font-weight:600;} .btn-s:hover{background:rgba(255,255,255,0.09);} .btn-f{background:linear-gradient(135deg,rgba(255,0,85,0.14),rgba(255,0,110,0.1));color:#FF0055;border:1px solid rgba(255,0,85,0.3);border-radius:100px;padding:14px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:sans-serif;transition:all 0.2s;width:100%;} .chip{display:inline-flex;align-items:center;gap:5px;padding:8px 16px;border-radius:100px;font-size:12px;font-family:sans-serif;cursor:pointer;transition:all 0.18s;white-space:nowrap;border:1px solid transparent;font-weight:600;} .card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:18px;} .hot-card{background:linear-gradient(145deg,rgba(255,0,85,0.07),rgba(255,107,0,0.04));border:1px solid rgba(255,0,85,0.16);border-radius:20px;padding:18px;} .sl{font-size:10px;text-transform:uppercase;letter-spacing:2.5px;color:#2a2a35;font-family:sans-serif;font-weight:700;margin-bottom:12px;} .nav-bar{position:absolute;bottom:0;left:0;right:0;background:rgba(4,4,7,0.98);backdrop-filter:blur(30px);padding:12px 0 28px;display:flex;justify-content:space-around;border-top:1px solid rgba(255,255,255,0.04);} .nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:0 12px;} .nav-icon{font-size:22px;transition:transform 0.2s;}.nav-item:hover .nav-icon{transform:scale(1.2);} .nav-label{font-size:9px;font-family:sans-serif;color:#2a2a35;letter-spacing:1px;text-transform:uppercase;font-weight:700;} .nav-label.active{color:#FF0055;} .loc-row{padding:15px 16px;border-radius:18px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all 0.2s;margin-bottom:8px;} .loc-row:hover{background:rgba(255,0,85,0.07);border-color:rgba(255,0,85,0.3);transform:translateX(4px);} .type-row{padding:14px 16px;border-radius:18px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);cursor:pointer;display:flex;align-items:center;gap:14px;transition:all 0.2s;margin-bottom:8px;} .type-row:hover{transform:translateX(5px);} .wink-card{border-radius:20px;padding:18px;margin-bottom:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);animation:slideUp 0.3s ease both;} input,textarea{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;color:white;padding:15px 18px;font-size:15px;width:100%;font-family:sans-serif;transition:border-color 0.2s;line-height:1.5;} input:focus,textarea:focus{border-color:rgba(255,0,85,0.4);} input::placeholder,textarea::placeholder{color:#222;}`;
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+export default function HottieSpottie() {
+// Auth state
+const [user, setUser]               = useState(null);
+const [profile, setProfile]         = useState(null);
+const [authMode, setAuthMode]       = useState(“login”);
+const [email, setEmail]             = useState(””);
+const [password, setPassword]       = useState(””);
+const [authLoading, setAuthLoading] = useState(false);
+const [authError, setAuthError]     = useState(””);
+// Data state
+const [locations, setLocations]     = useState([]);
+const [sightings, setSightings]     = useState([]);
+const [flirts, setFlirts]           = useState([]);
+const [winks, setWinks]             = useState([]);
+// UI state
+const [screen, setScreen]           = useState(“onboard”);
+const [onboardStep, setOnboardStep] = useState(0);
+const [activeFilter, setActiveFilter] = useState(null);
+const [selectedSpot, setSelectedSpot] = useState(null);
+const [spotStep, setSpotStep]       = useState(0);
+const [spotData, setSpotData]       = useState({location:null,type:null,note:””,flirt:””});
+const [winkOn, setWinkOn]           = useState(false);
+const [winkHint, setWinkHint]       = useState(””);
+const [winkVibe, setWinkVibe]       = useState(null);
+const [winkIntent, setWinkIntent]   = useState(null);
+const [sparkColor, setSparkColor]   = useState(null);
+const [showSpark, setShowSpark]     = useState(false);
+const [toast, setToast]             = useState(null);
+const [surge, setSurge]             = useState(null);
+const [showBonus, setShowBonus]     = useState(false);
+const [bonus, setBonus]             = useState(null);
+const [confetti, setConfetti]       = useState(false);
+const [newPinIds, setNewPinIds]     = useState([]);
+const [streak]                      = useState(3);
+
+// Derived
+const points = profile?.points || 0;
+
+// ── Data loaders ────────────────────────────────────────────────────────────
+const loadData = useCallback(async () => {
+try {
+const [locs, sights, flts, wnks] = await Promise.all([
+sb(“locations?select=*&order=id”),
+sb(“sightings?select=*&order=created_at.desc&limit=200”),
+sb(“flirts?select=*&order=created_at.desc&limit=200”),
+sb(“winks?select=*&active=eq.true&order=created_at.desc&limit=50”),
+]);
+setLocations(locs||[]);
+setSightings(sights||[]);
+setFlirts(flts||[]);
+setWinks(wnks||[]);
+} catch(e){ console.error(“loadData error”,e); }
+}, []);
+
+const loadProfile = useCallback(async (uid) => {
+try {
+const rows = await sb(`profiles?id=eq.${uid}&select=*`);
+if(rows?.length) setProfile(rows[0]);
+} catch(e){ console.error(“loadProfile error”,e); }
+}, []);
+
+useEffect(() => { loadData(); }, [loadData]);
+
+// ── Surge alerts ─────────────────────────────────────────────────────────────
+useEffect(() => {
+if(screen !== “map”) return;
+const t = setTimeout(() => {
+setSurge(SURGE_MSGS[Math.floor(Math.random()*SURGE_MSGS.length)]);
+setTimeout(() => setSurge(null), 4500);
+}, 9000 + Math.random()*9000);
+return () => clearTimeout(t);
+}, [screen, surge]);
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const showToast = (msg, emoji=“✨”) => { setToast({msg,emoji}); setTimeout(()=>setToast(null),2800); };
+const goTo = useCallback((s) => setScreen(s), []);
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+const handleAuth = async () => {
+setAuthLoading(true); setAuthError(””);
+try {
+const path = authMode===“signup” ? “signup” : “token?grant_type=password”;
+const data = await sbAuth(path, {email, password});
+if(data.error){ setAuthError(data.error.message||data.error); return; }
+if(data.access_token){ setUser(data.user); await loadProfile(data.user.id); goTo(“map”); }
+else if(authMode===“signup”&&data.user){ showToast(“Check your email!”,“📬”); setAuthMode(“login”); }
+} catch(e){ setAuthError(e.message); }
+finally { setAuthLoading(false); }
+};
+
+// ── Spot submit ──────────────────────────────────────────────────────────────
+const handleSpotSubmit = async () => {
+if(!spotData.location||!spotData.type) return;
+try {
+await sb(“sightings”, {method:“POST”, body:JSON.stringify({user_id:user?.id||null, location_id:spotData.location.id, hottie_type:spotData.type.label, note:spotData.note||null})});
+if(spotData.flirt.trim()) await sb(“flirts”, {method:“POST”, body:JSON.stringify({user_id:user?.id||null, location_id:spotData.location.id, message:spotData.flirt})});
+const pts = 40 + Math.floor(Math.random()*60);
+if(user && profile) {
+const newPts = (profile.points||0) + pts;
+await sb(`profiles?id=eq.${user.id}`, {method:“PATCH”, body:JSON.stringify({points:newPts})});
+setProfile(p=>({…p, points:newPts}));
+}
+setNewPinIds(prev=>[…prev, spotData.location.id]);
+setTimeout(()=>setNewPinIds(prev=>prev.filter(x=>x!==spotData.location.id)), 2000);
+await loadData();
+setBonus(BONUS_POOL[Math.floor(Math.random()*BONUS_POOL.length)]);
+setShowBonus(true);
+} catch(e){ showToast(“Error saving spot”,“❌”); console.error(e); }
+};
+
+const handleBonusCollect = async () => {
+if(user && profile) {
+const newPts = (profile.points||0) + bonus.pts;
+await sb(`profiles?id=eq.${user.id}`, {method:“PATCH”, body:JSON.stringify({points:newPts})});
+setProfile(p=>({…p, points:newPts}));
+}
+setShowBonus(false);
+if(bonus.pts>=100){ setConfetti(true); setTimeout(()=>setConfetti(false),2500); }
+setSpotStep(4);
+};
+
+const handlePostWink = async () => {
+if(!winkHint.trim()) return;
+try {
+await sb(“winks”, {method:“POST”, body:JSON.stringify({user_id:user?.id||null, location_id:locations[0]?.id||null, hint:winkHint, vibe:winkVibe, intent:winkIntent, active:true})});
+await loadData();
+showToast(“Wink posted 😉”,“💘”);
+} catch(e){ showToast(“Error posting wink”,“❌”); }
+};
+
+// ── Derived / enriched data ───────────────────────────────────────────────
+const enrichedLocations = locations.map(loc => {
+const ls = sightings.filter(s=>s.location_id===loc.id);
+const lf = flirts.filter(f=>f.location_id===loc.id);
+const tc = {};
+ls.forEach(s=>{ tc[s.hottie_type]=(tc[s.hottie_type]||0)+1; });
+const topType = Object.entries(tc).sort((a,b)=>b[1]-a[1])[0]?.[0] || “Gym Bunny”;
+return { …loc, sightings:ls.length, flirtsCount:lf.length, topType, recentFlirts:lf.slice(0,3), peakTime:PEAK[loc.name]||“Varies” };
+});
+const filteredLocations = enrichedLocations.filter(s=>!activeFilter||s.topType===activeFilter);
+const topLocations = […enrichedLocations].sort((a,b)=>b.sightings-a.sightings).slice(0,5);
+
+// ── Render ────────────────────────────────────────────────────────────────────
+return (
+<div style={{display:“flex”,justifyContent:“center”,alignItems:“center”,minHeight:“100vh”,background:”#020204”}}>
+<style>{CSS}</style>
+<div style={{width:390,height:844,background:”#06060a”,borderRadius:54,overflow:“hidden”,position:“relative”,boxShadow:“0 0 0 1px #101018,0 0 0 3px #08080c,0 0 120px rgba(255,0,85,0.16),0 70px 180px rgba(0,0,0,0.98)”}}>
+
+```
+    <Confetti active={confetti}/>
+    {showSpark&&sparkColor&&<SparkScreen sc={sparkColor} onFound={()=>{setShowSpark(false);showToast("You found them 💘","✨");setConfetti(true);setTimeout(()=>setConfetti(false),2500);}} onExpire={()=>{setShowSpark(false);showToast("Signal faded. Next time.","💨");}}/>}
+    {showBonus&&bonus&&<MysteryBonus bonus={bonus} onCollect={handleBonusCollect}/>}
+    {toast&&<div style={{position:"absolute",bottom:105,left:"50%",zIndex:500,background:"rgba(8,8,12,0.97)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,0,85,0.22)",borderRadius:100,padding:"12px 24px",display:"flex",alignItems:"center",gap:8,animation:"toastIn 2.6s ease forwards",whiteSpace:"nowrap",boxShadow:"0 4px 28px rgba(255,0,85,0.22)"}}><span style={{fontSize:18}}>{toast.emoji}</span><span style={{color:"white",fontFamily:"sans-serif",fontSize:14,fontWeight:700}}>{toast.msg}</span></div>}
+    {surge&&screen==="map"&&<div style={{position:"absolute",top:54,left:12,right:12,zIndex:200,background:"linear-gradient(135deg,#CC0044,#FF0055)",borderRadius:16,padding:"12px 18px",display:"flex",alignItems:"center",gap:10,boxShadow:"0 4px 30px rgba(255,0,85,0.5)",animation:"alertSlide 0.4s ease"}}><span style={{color:"white",fontFamily:"sans-serif",fontSize:13,fontWeight:700,flex:1}}>{surge}</span><span style={{color:"rgba(255,255,255,0.35)",fontSize:10,letterSpacing:1}}>NOW</span></div>}
+
+    <div style={{width:"100%",height:"100%",overflowY:"auto",overflowX:"hidden",position:"relative"}}>
+
+      {screen!=="onboard"&&screen!=="auth"&&<div style={{display:"flex",justifyContent:"space-between",padding:"14px 24px 0",fontSize:12,color:"#1e1e28",fontFamily:"sans-serif",fontWeight:700}}><span>9:41</span><span>●●●</span></div>}
+
+      {/* ── ONBOARDING ── */}
+      {screen==="onboard"&&(
+        <div style={{width:"100%",height:"100%",background:ONBOARD_SLIDES[onboardStep].bg,display:"flex",flexDirection:"column",justifyContent:"space-between",padding:"72px 32px 56px",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:"8%",left:"18%",width:250,height:250,borderRadius:"50%",background:"radial-gradient(circle,rgba(255,0,85,0.08),transparent 70%)",animation:"orbFloat 7s ease-in-out infinite",pointerEvents:"none"}}/>
+          <div style={{position:"relative"}}>
+            <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,0,85,0.1)",border:"1px solid rgba(255,0,85,0.2)",borderRadius:100,padding:"5px 14px",marginBottom:28,animation:"tagPop 0.4s cubic-bezier(0.34,1.56,0.64,1)"}}>
+              <div style={{width:5,height:5,borderRadius:"50%",background:"#FF0055",boxShadow:"0 0 6px #FF0055"}}/>
+              <span style={{color:"#FF0055",fontFamily:"sans-serif",fontSize:10,fontWeight:700,letterSpacing:2}}>{ONBOARD_SLIDES[onboardStep].tag}</span>
+            </div>
+            <div style={{fontSize:84,marginBottom:28,animation:"floatY 2.5s ease-in-out infinite",display:"block"}}>{ONBOARD_SLIDES[onboardStep].emoji}</div>
+            <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:40,fontWeight:700,lineHeight:1.1,marginBottom:20,whiteSpace:"pre-line",letterSpacing:"-1px"}}>
+              {ONBOARD_SLIDES[onboardStep].title.split("\n").map((line,i)=><div key={i} style={{color:i===0?"white":"rgba(255,255,255,0.4)"}}>{line}</div>)}
+            </div>
+            <div style={{color:"#555",fontFamily:"sans-serif",fontSize:15,lineHeight:1.85}}>{ONBOARD_SLIDES[onboardStep].body}</div>
+          </div>
+          <div>
+            <div style={{display:"flex",gap:8,marginBottom:28}}>
+              {ONBOARD_SLIDES.map((_,i)=><div key={i} style={{width:i===onboardStep?28:7,height:7,borderRadius:4,background:i===onboardStep?"#FF0055":i<onboardStep?"rgba(255,0,85,0.3)":"#181820",transition:"all 0.35s cubic-bezier(0.34,1.56,0.64,1)"}}/>)}
+            </div>
+            <button className="btn-p" onClick={()=>{ if(onboardStep<2) setOnboardStep(s=>s+1); else goTo("auth"); }}>{ONBOARD_SLIDES[onboardStep].cta}</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── AUTH ── */}
+      {screen==="auth"&&(
+        <div style={{width:"100%",height:"100%",background:"radial-gradient(ellipse at 50% 20%,rgba(255,0,85,0.18) 0%,#06060a 60%)",display:"flex",flexDirection:"column",justifyContent:"center",padding:"40px 32px"}}>
+          <div style={{marginBottom:36}}>
+            <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:42,fontWeight:700,letterSpacing:"-1px",marginBottom:8}}><span className="glow-text">Hottie</span><span style={{color:"#1e1e28"}}> Spottie</span></div>
+            <div style={{color:"#333",fontFamily:"sans-serif",fontSize:15}}>{authMode==="signup"?"Create your account.":"Welcome back."}</div>
+          </div>
+          <div style={{marginBottom:14}}>
+            <div className="sl">Email</div>
+            <input type="email" placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)} style={{marginBottom:10}}/>
+            <div className="sl">Password</div>
+            <input type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)}/>
+          </div>
+          {authError&&<div style={{color:"#FF0055",fontFamily:"sans-serif",fontSize:13,marginBottom:14,padding:"10px 14px",background:"rgba(255,0,85,0.08)",borderRadius:12,border:"1px solid rgba(255,0,85,0.2)"}}>{authError}</div>}
+          <button className="btn-p" onClick={handleAuth} disabled={authLoading} style={{marginBottom:12}}>{authLoading?"Loading...":authMode==="signup"?"Create Account 🔥":"Sign In 🔥"}</button>
+          <button className="btn-s" style={{width:"100%"}} onClick={()=>{setAuthMode(m=>m==="signup"?"login":"signup");setAuthError("");}}>{authMode==="signup"?"Already have an account? Sign in":"New here? Create account"}</button>
+          <div style={{marginTop:20,textAlign:"center"}}><button onClick={()=>goTo("map")} style={{background:"none",border:"none",color:"#333",fontFamily:"sans-serif",fontSize:13,cursor:"pointer",textDecoration:"underline"}}>Browse without account</button></div>
+        </div>
+      )}
+
+      {/* ── MAP ── */}
+      {screen==="map"&&(
+        <div style={{paddingBottom:90}}>
+          <div style={{padding:"6px 20px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:32,fontWeight:700,letterSpacing:"-0.5px",lineHeight:1}}><span className="glow-text">Hottie</span><span style={{color:"#16161e"}}> Spottie</span></div>
+              <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,140,0,0.08)",border:"1px solid rgba(255,140,0,0.18)",borderRadius:100,padding:"3px 12px",marginTop:5}}>
+                <div style={{width:5,height:5,borderRadius:"50%",background:"#FF0055",boxShadow:"0 0 8px #FF0055",animation:"blink 1.2s ease-in-out infinite"}}/>
+                <span style={{color:"#FF8C00",fontFamily:"sans-serif",fontSize:10,fontWeight:700,letterSpacing:1}}>LIVE · SLC</span>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:10,alignItems:"center"}}>
+              <div onClick={()=>goTo("profile")} style={{background:"linear-gradient(145deg,rgba(255,0,85,0.1),rgba(255,107,0,0.07))",border:"1px solid rgba(255,0,85,0.18)",borderRadius:16,padding:"8px 16px",textAlign:"center",cursor:"pointer"}}>
+                <div style={{color:"#FF0055",fontFamily:"sans-serif",fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>Points</div>
+                <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:22,fontWeight:700,color:"white",lineHeight:1.1}}>{points.toLocaleString()}</div>
+              </div>
+              <div onClick={()=>user?goTo("profile"):goTo("auth")} style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#FF0055,#FF6B00)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,cursor:"pointer",boxShadow:"0 0 24px rgba(255,0,85,0.38)"}}>👤</div>
+            </div>
+          </div>
+
+          {sightings.length>0&&<div style={{background:"rgba(255,0,85,0.05)",border:"1px solid rgba(255,0,85,0.12)",borderRadius:12,padding:"9px 16px",display:"flex",alignItems:"center",gap:10,margin:"0 20px 14px"}}>
+            <div style={{width:7,height:7,borderRadius:"50%",background:"#FF0055",boxShadow:"0 0 10px #FF0055",animation:"blink 1s ease-in-out infinite",flexShrink:0}}/>
+            <span style={{fontSize:15}}>{getTypeEmoji(sightings[0]?.hottie_type)}</span>
+            <span style={{color:"#666",fontFamily:"sans-serif",fontSize:12,flex:1}}><span style={{color:"#FF0055",fontWeight:700}}>{sightings[0]?.hottie_type}</span>{" spotted at "}<span style={{color:"rgba(255,255,255,0.85)",fontWeight:600}}>{enrichedLocations.find(l=>l.id===sightings[0]?.location_id)?.name||"SLC"}</span></span>
+          </div>}
+
+          <div style={{padding:"0 20px 12px",display:"flex",gap:7,overflowX:"auto"}}>
+            <button className="chip" onClick={()=>setActiveFilter(null)} style={{background:!activeFilter?"rgba(255,0,85,0.14)":"rgba(255,255,255,0.03)",borderColor:!activeFilter?"rgba(255,0,85,0.4)":"rgba(255,255,255,0.06)",color:!activeFilter?"#FF0055":"#333"}}>All</button>
+            {HOTTIE_TYPES.map(t=><button key={t.id} className="chip" onClick={()=>setActiveFilter(activeFilter===t.label?null:t.label)} style={{background:activeFilter===t.label?`${t.color}16`:"rgba(255,255,255,0.03)",borderColor:activeFilter===t.label?`${t.color}50`:"rgba(255,255,255,0.06)",color:activeFilter===t.label?t.color:"#333"}}>{t.emoji} {t.label}</button>)}
+          </div>
+
+          <MapboxMap locations={filteredLocations} onSelectSpot={(spot)=>{setSelectedSpot(spot);goTo("location");}} newPinIds={newPinIds}/>
+
+          <div style={{padding:"14px 20px 0",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <button className="btn-p" onClick={()=>{setSpotStep(0);setSpotData({location:null,type:null,note:"",flirt:""});goTo("spot");}}>📍 Spot a Hottie</button>
+            <button className="btn-s" onClick={()=>goTo("wink")}>😉 Wink Mode</button>
+          </div>
+          <div style={{padding:"10px 20px 0"}}>
+            <button onClick={()=>goTo("tonight")} style={{width:"100%",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",color:"#555",borderRadius:100,padding:"13px 20px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"sans-serif"}}>🌙 Where should we go tonight?</button>
+          </div>
+          <div style={{padding:"18px 20px 0"}}>
+            <div className="sl">🔥 Hottest right now</div>
+            <div style={{display:"flex",gap:8,overflowX:"auto"}}>
+              {topLocations.map(s=><div key={s.id} onClick={()=>{setSelectedSpot(s);goTo("location");}} style={{minWidth:138,background:"rgba(255,255,255,0.03)",borderRadius:18,padding:"14px",border:"1px solid rgba(255,255,255,0.06)",cursor:"pointer",flexShrink:0,transition:"all 0.2s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(255,0,85,0.28)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.06)"}>
+                <div style={{fontSize:10,color:"#FF0055",fontFamily:"sans-serif",fontWeight:700,marginBottom:5}}>🔥 {s.sightings}{s.flirtsCount>0&&<span style={{marginLeft:4,background:"rgba(255,0,85,0.12)",borderRadius:100,padding:"1px 6px",fontSize:9}}>💌 {s.flirtsCount}</span>}</div>
+                <div style={{color:"white",fontFamily:"sans-serif",fontSize:13,fontWeight:700,marginBottom:3}}>{s.name}</div>
+                <div style={{color:"#222",fontFamily:"sans-serif",fontSize:10}}>{getStatus(getHeat(s.sightings))}</div>
+              </div>)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SPOT ── */}
+      {screen==="spot"&&(
+        <div style={{padding:"14px 20px 50px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+            <button onClick={()=>{if(spotStep===0)goTo("map");else setSpotStep(s=>s-1);}} style={{background:"none",border:"none",color:"#FF0055",fontSize:22,cursor:"pointer"}}>←</button>
+            <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:28,fontWeight:700,color:"white",letterSpacing:"-0.5px"}}>
+              {spotStep===0?"Where are they?":spotStep===1?"What is the vibe?":spotStep===2?"Add a note":spotStep===3?"Drop a Flirt?":"You are a legend."}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:22}}>
+            {[0,1,2,3].map(i=><div key={i} style={{flex:1,height:3,borderRadius:2,background:i<=Math.min(spotStep,3)?"#FF0055":"rgba(255,255,255,0.06)",transition:"background 0.4s",boxShadow:i<=Math.min(spotStep,3)?"0 0 8px rgba(255,0,85,0.4)":"none"}}/>)}
+          </div>
+
+          {spotStep===0&&<div style={{animation:"slideUp 0.3s ease"}}>
+            <div className="sl">Choose a location</div>
+            {enrichedLocations.map(loc=><div key={loc.id} className="loc-row" onClick={()=>{setSpotData(d=>({...d,location:loc}));setSpotStep(1);}}>
+              <div><div style={{color:"white",fontFamily:"sans-serif",fontSize:15,fontWeight:700}}>{loc.name}</div><div style={{color:"#2a2a35",fontSize:12,fontFamily:"sans-serif",marginTop:2}}>{getTypeEmoji(loc.topType)} {loc.topType} · {getStatus(getHeat(loc.sightings))}</div></div>
+              <div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:12,color:"#FF0055",fontFamily:"sans-serif",fontWeight:700}}>🔥 {loc.sightings}</div>{loc.flirtsCount>0&&<div style={{fontSize:10,color:"#FF006E",fontFamily:"sans-serif",marginTop:2}}>💌 {loc.flirtsCount}</div>}</div>
+            </div>)}
+          </div>}
+
+          {spotStep===1&&<div style={{animation:"slideUp 0.3s ease"}}>
+            <div style={{background:"rgba(255,0,85,0.05)",border:"1px solid rgba(255,0,85,0.14)",borderRadius:14,padding:"10px 16px",marginBottom:18,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:16}}>📍</span><span style={{color:"#666",fontFamily:"sans-serif",fontSize:13}}>Spotted at <span style={{color:"white",fontWeight:700}}>{spotData.location?.name}</span></span>
+            </div>
+            <div className="sl">What is the vibe?</div>
+            {HOTTIE_TYPES.map(type=><div key={type.id} className="type-row" onClick={()=>{setSpotData(d=>({...d,type}));setSpotStep(2);}} style={{borderColor:spotData.type?.id===type.id?`${type.color}50`:"rgba(255,255,255,0.06)",background:spotData.type?.id===type.id?`${type.color}10`:"rgba(255,255,255,0.03)"}}>
+              <div style={{fontSize:26,width:36,textAlign:"center",flexShrink:0}}>{type.emoji}</div>
+              <div style={{color:type.color,fontFamily:"sans-serif",fontSize:14,fontWeight:700}}>{type.label}</div>
+            </div>)}
+          </div>}
+
+          {spotStep===2&&<div style={{animation:"slideUp 0.3s ease"}}>
+            <div style={{background:`${spotData.type?.color}0e`,border:`1px solid ${spotData.type?.color}28`,borderRadius:20,padding:"16px",marginBottom:20,display:"flex",alignItems:"center",gap:14}}>
+              <div style={{fontSize:30}}>{spotData.type?.emoji}</div>
+              <div><div style={{color:spotData.type?.color,fontFamily:"sans-serif",fontSize:15,fontWeight:700}}>{spotData.type?.label}</div><div style={{color:"#333",fontFamily:"sans-serif",fontSize:13,marginTop:2}}>at {spotData.location?.name}</div></div>
+            </div>
+            <div className="sl">Drop a note (optional)</div>
+            <textarea rows={3} placeholder="Wearing black, drinking tequila, doing too much." value={spotData.note} onChange={e=>setSpotData(d=>({...d,note:e.target.value}))} style={{marginBottom:16}}/>
+            <div style={{background:"rgba(255,0,85,0.04)",border:"1px solid rgba(255,0,85,0.1)",borderRadius:14,padding:"12px 16px",marginBottom:20}}><div style={{fontSize:12,color:"#333",fontFamily:"sans-serif",lineHeight:1.7}}>🔒 Completely anonymous. No names, no faces — just vibes.</div></div>
+            <button className="btn-p" onClick={()=>setSpotStep(3)}>Next — Drop a Flirt? 💌</button>
+            <button className="btn-s" style={{width:"100%",marginTop:10}} onClick={handleSpotSubmit}>Skip and Submit</button>
+          </div>}
+
+          {spotStep===3&&<div style={{animation:"slideUp 0.3s ease"}}>
+            <div style={{background:"rgba(255,0,85,0.06)",border:"1px solid rgba(255,0,85,0.14)",borderRadius:18,padding:"16px",marginBottom:20}}>
+              <div style={{color:"#FF0055",fontFamily:"sans-serif",fontSize:10,textTransform:"uppercase",letterSpacing:2,fontWeight:700,marginBottom:6}}>Optional</div>
+              <div style={{color:"#777",fontFamily:"sans-serif",fontSize:14,lineHeight:1.75}}>Leave an anonymous note at <span style={{color:"white",fontWeight:700}}>{spotData.location?.name}</span>. If they open the app, they might find it.</div>
+            </div>
+            <div className="sl">Your Flirt</div>
+            <textarea rows={3} placeholder="To whoever is in the black jacket by the window — I saw you. That is all." value={spotData.flirt} onChange={e=>setSpotData(d=>({...d,flirt:e.target.value}))} style={{marginBottom:14}}/>
+            <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:20}}>
+              {["To the one in the corner 👀","If you feel this it is for you","I would say hi but I am shy","Spotted. Smitten. Send help."].map(s=><button key={s} onClick={()=>setSpotData(d=>({...d,flirt:s}))} className="chip" style={{background:"rgba(255,0,85,0.07)",borderColor:"rgba(255,0,85,0.2)",color:"#FF0055",fontSize:11}}>{s}</button>)}
+            </div>
+            <button className="btn-f" onClick={handleSpotSubmit}>{spotData.flirt.trim()?"Drop the Pin + Flirt 💌":"Drop the Pin 📍"}</button>
+            <button className="btn-s" style={{width:"100%",marginTop:10}} onClick={handleSpotSubmit}>Skip — just drop the pin</button>
+          </div>}
+
+          {spotStep===4&&<div style={{textAlign:"center",paddingTop:20,animation:"scaleIn 0.4s cubic-bezier(0.34,1.56,0.64,1)"}}>
+            <div style={{fontSize:88,marginBottom:18,animation:"heartBeat 0.9s ease-in-out 2",display:"inline-block"}}>❤️</div>
+            <div className="glow-text" style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:36,fontWeight:700,marginBottom:8}}>Sighting confirmed.</div>
+            {spotData.flirt.trim()&&<div style={{background:"rgba(255,0,85,0.07)",border:"1px solid rgba(255,0,85,0.16)",borderRadius:16,padding:"12px 18px",marginBottom:16,display:"inline-flex",alignItems:"center",gap:8}}><span style={{fontSize:16}}>💌</span><span style={{color:"#FF0055",fontFamily:"sans-serif",fontSize:13,fontWeight:700}}>Flirt floating at {spotData.location?.name}</span></div>}
+            <div style={{color:"#333",fontFamily:"sans-serif",fontSize:14,marginBottom:28}}>{spotData.type?.emoji} {spotData.type?.label} at {spotData.location?.name}</div>
+            <div style={{background:"linear-gradient(145deg,rgba(255,0,85,0.1),rgba(255,107,0,0.06))",border:"1px solid rgba(255,0,85,0.18)",borderRadius:22,padding:"20px 24px",marginBottom:28,display:"flex",alignItems:"center",gap:14}}>
+              <span style={{fontSize:26}}>⭐</span>
+              <div style={{textAlign:"left"}}><div style={{color:"#FF0055",fontFamily:"sans-serif",fontWeight:700,fontSize:18}}>{points.toLocaleString()} pts</div><div style={{color:"#222",fontFamily:"sans-serif",fontSize:12,marginTop:2}}>{REWARDS.find(r=>r.pts>points)?`${(REWARDS.find(r=>r.pts>points).pts-points).toLocaleString()} pts to ${REWARDS.find(r=>r.pts>points).label}`:"All rewards unlocked!"}</div></div>
+            </div>
+            <button className="btn-p" onClick={()=>{setSpotStep(0);setSpotData({location:null,type:null,note:"",flirt:""});}}>Spot Another 📍</button>
+            <button className="btn-s" style={{width:"100%",marginTop:10}} onClick={()=>goTo("map")}>Back to Map</button>
+          </div>}
+        </div>
+      )}
+
+      {/* ── LOCATION ── */}
+      {screen==="location"&&selectedSpot&&<div style={{paddingBottom:40}}>
+        <div style={{padding:"14px 20px 20px"}}>
+          <button onClick={()=>goTo("map")} style={{background:"none",border:"none",color:"#FF0055",fontSize:22,cursor:"pointer",marginBottom:14}}>←</button>
+          <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:34,fontWeight:700,color:"white",marginBottom:8,letterSpacing:"-0.5px",lineHeight:1.1}}>{selectedSpot.name}</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <span style={{background:"rgba(255,0,85,0.1)",border:"1px solid rgba(255,0,85,0.25)",borderRadius:100,padding:"6px 16px",color:"#FF0055",fontFamily:"sans-serif",fontSize:12,fontWeight:700}}>🔥 {getStatus(getHeat(selectedSpot.sightings))}</span>
+            <span style={{background:`${getTypeColor(selectedSpot.topType)}12`,border:`1px solid ${getTypeColor(selectedSpot.topType)}28`,borderRadius:100,padding:"6px 16px",color:getTypeColor(selectedSpot.topType),fontFamily:"sans-serif",fontSize:12,fontWeight:700}}>{getTypeEmoji(selectedSpot.topType)} {selectedSpot.topType}</span>
+            {selectedSpot.flirtsCount>0&&<span style={{background:"rgba(255,0,110,0.08)",border:"1px solid rgba(255,0,110,0.22)",borderRadius:100,padding:"6px 16px",color:"#FF006E",fontFamily:"sans-serif",fontSize:12,fontWeight:700}}>💌 {selectedSpot.flirtsCount} Flirts</span>}
+          </div>
+        </div>
+        <div style={{padding:"0 20px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            {[["👁","Sightings",selectedSpot.sightings],["⏰","Peak",selectedSpot.peakTime],["🌡","Heat",`${getHeat(selectedSpot.sightings)}/5`],["💌","Flirts",selectedSpot.flirtsCount]].map(([e,l,v])=><div key={l} className="card"><div style={{fontSize:20,marginBottom:6}}>{e}</div><div style={{color:"white",fontFamily:"sans-serif",fontSize:14,fontWeight:700}}>{v}</div><div style={{color:"#1e1e28",fontFamily:"sans-serif",fontSize:10,marginTop:2}}>{l}</div></div>)}
+          </div>
+          <div className="card" style={{marginBottom:14}}>
+            <div className="sl">🔮 Hottie Forecast</div>
+            <ForecastChart locationId={selectedSpot.id} peakTime={selectedSpot.peakTime}/>
+          </div>
+          {selectedSpot.recentFlirts?.length>0&&<div className="hot-card" style={{marginBottom:14}}>
+            <div className="sl">💌 Flirts floating here</div>
+            {selectedSpot.recentFlirts.map((f,i)=><div key={f.id||i} style={{paddingBottom:i<selectedSpot.recentFlirts.length-1?12:0,marginBottom:i<selectedSpot.recentFlirts.length-1?12:0,borderBottom:i<selectedSpot.recentFlirts.length-1?"1px solid rgba(255,255,255,0.04)":"none"}}><div style={{color:"#888",fontFamily:"sans-serif",fontSize:13,fontStyle:"italic",lineHeight:1.7}}>"{f.message}"</div></div>)}
+          </div>}
+          <button className="btn-p" onClick={()=>{setSpotData(d=>({...d,location:selectedSpot}));setSpotStep(1);goTo("spot");}}>📍 Spot a Hottie Here</button>
+        </div>
+      </div>}
+
+      {/* ── WINK ── */}
+      {screen==="wink"&&<div style={{padding:"14px 20px 100px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+          <button onClick={()=>goTo("map")} style={{background:"none",border:"none",color:"#FF0055",fontSize:22,cursor:"pointer"}}>←</button>
+          <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:28,fontWeight:700,color:"white"}}>😉 <span className="glow-text">Wink Mode</span></div>
+        </div>
+        <div style={{background:winkOn?"rgba(255,0,85,0.07)":"rgba(255,255,255,0.03)",border:`1px solid ${winkOn?"rgba(255,0,85,0.22)":"rgba(255,255,255,0.06)"}`,borderRadius:22,padding:"20px",marginBottom:20,transition:"all 0.3s"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div><div style={{color:"white",fontFamily:"sans-serif",fontSize:16,fontWeight:700,marginBottom:4}}>{winkOn?"You are visible 👁":"You are hidden 🙈"}</div><div style={{color:"#333",fontFamily:"sans-serif",fontSize:13}}>{winkOn?"Others can Spark you.":"Flip the switch."}</div></div>
+            <div onClick={()=>{setWinkOn(w=>!w);if(!winkOn)showToast("Wink Mode on 👁","😉");}} style={{width:54,height:32,borderRadius:16,background:winkOn?"linear-gradient(135deg,#FF0055,#FF6B00)":"#141418",position:"relative",cursor:"pointer",transition:"background 0.3s",flexShrink:0,boxShadow:winkOn?"0 0 16px rgba(255,0,85,0.4)":"none"}}>
+              <div style={{width:24,height:24,borderRadius:"50%",background:"white",position:"absolute",top:4,left:winkOn?26:4,transition:"left 0.25s cubic-bezier(0.34,1.56,0.64,1)",boxShadow:"0 2px 8px rgba(0,0,0,0.5)"}}/>
+            </div>
+          </div>
+        </div>
+        {winkOn&&<div style={{animation:"slideUp 0.3s ease",marginBottom:20}}>
+          <div className="sl">Your Hint</div>
+          <textarea rows={2} placeholder="Black shirt, at the bar, pretending to be busy." value={winkHint} onChange={e=>setWinkHint(e.target.value)} style={{marginBottom:14}}/>
+          <div className="sl">Vibe</div>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+            {["Come say hi","Eye contact first","If cute, approach","Mystery only"].map(v=><button key={v} className="chip" onClick={()=>setWinkVibe(winkVibe===v?null:v)} style={{background:winkVibe===v?"rgba(255,0,85,0.14)":"rgba(255,255,255,0.04)",borderColor:winkVibe===v?"rgba(255,0,85,0.4)":"rgba(255,255,255,0.07)",color:winkVibe===v?"#FF0055":"#444"}}>{v}</button>)}
+          </div>
+          <div className="sl">Intent</div>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:20}}>
+            {["Flirting","Drink?","Actually single","Just curious"].map(v=><button key={v} className="chip" onClick={()=>setWinkIntent(winkIntent===v?null:v)} style={{background:winkIntent===v?"rgba(255,0,85,0.14)":"rgba(255,255,255,0.04)",borderColor:winkIntent===v?"rgba(255,0,85,0.4)":"rgba(255,255,255,0.07)",color:winkIntent===v?"#FF0055":"#444"}}>{v}</button>)}
+          </div>
+          <button className="btn-p" onClick={handlePostWink}>Post Wink</button>
+        </div>}
+        <div className="sl" style={{marginTop:8}}>Active Winks Nearby</div>
+        {winks.length===0&&<div style={{color:"#222",fontFamily:"sans-serif",fontSize:14,padding:"20px 0",textAlign:"center"}}>No active winks yet. Be the first. 😉</div>}
+        {winks.map((w,i)=><div key={w.id} className="wink-card" style={{animationDelay:`${i*0.08}s`}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+            <span style={{color:"#FF0055",fontFamily:"sans-serif",fontSize:12,fontWeight:700}}>📍 {enrichedLocations.find(l=>l.id===w.location_id)?.name||"SLC"}</span>
+            <span style={{color:"#1e1e28",fontFamily:"sans-serif",fontSize:11}}>just now</span>
+          </div>
+          <div style={{color:"#888",fontFamily:"sans-serif",fontSize:14,fontStyle:"italic",lineHeight:1.7,marginBottom:14}}>"{w.hint}"</div>
+          <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:11,color:"#2a2a35",fontFamily:"sans-serif"}}>{w.vibe||"Open"}</span>
+            <div style={{display:"flex",gap:8}}>
+              <button className="chip" onClick={()=>showToast("Wink sent 💌","😉")} style={{background:"rgba(255,0,85,0.08)",borderColor:"rgba(255,0,85,0.25)",color:"#FF0055",fontSize:11,fontWeight:700}}>😉 Wink back</button>
+              <button className="chip" onClick={()=>{const c=SPARK_COLORS[Math.floor(Math.random()*SPARK_COLORS.length)];setSparkColor(c);setShowSpark(true);}} style={{background:"linear-gradient(135deg,rgba(255,0,85,0.18),rgba(255,107,0,0.12))",borderColor:"rgba(255,0,85,0.4)",color:"#FF0055",fontSize:11,fontWeight:700}}>✨ Spark</button>
+            </div>
+          </div>
+        </div>)}
+      </div>}
+
+      {/* ── TONIGHT ── */}
+      {screen==="tonight"&&<div style={{padding:"14px 20px 50px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+          <button onClick={()=>goTo("map")} style={{background:"none",border:"none",color:"#FF0055",fontSize:22,cursor:"pointer"}}>←</button>
+          <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:28,fontWeight:700,color:"white"}}>🌙 Where Tonight?</div>
+        </div>
+        <div style={{background:"linear-gradient(145deg,rgba(255,0,85,0.06),rgba(100,0,255,0.04))",border:"1px solid rgba(255,0,85,0.12)",borderRadius:20,padding:"16px",marginBottom:22}}>
+          <div style={{color:"#555",fontFamily:"sans-serif",fontSize:13,lineHeight:1.8}}>Based on historical sighting patterns. Go prepared. 🔮</div>
+        </div>
+        {[...enrichedLocations].sort((a,b)=>{const h=new Date().getHours();return (FORECAST_DATA[b.id]?.[Math.min(h+2,23)]||0)-(FORECAST_DATA[a.id]?.[Math.min(h+2,23)]||0);}).slice(0,6).map((s,i)=>{
+          const h=new Date().getHours();const fh=FORECAST_DATA[s.id]?.[Math.min(h+2,23)]||0;const color=getTypeColor(s.topType);
+          return <div key={s.id} onClick={()=>{setSelectedSpot(s);goTo("location");}} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:20,padding:"16px",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:14,animation:`slideUp 0.3s ease ${i*0.06}s both`,transition:"all 0.2s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(255,0,85,0.28)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.06)"}>
+            <div style={{width:44,height:44,borderRadius:14,background:`${color}14`,border:`1px solid ${color}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{getTypeEmoji(s.topType)}</div>
+            <div style={{flex:1}}><div style={{color:"white",fontFamily:"sans-serif",fontSize:15,fontWeight:700,marginBottom:3}}>{s.name}</div><div style={{color:"#333",fontFamily:"sans-serif",fontSize:12}}>{s.topType} · Peak {s.peakTime}</div></div>
+            <div style={{display:"flex",gap:3,alignItems:"flex-end"}}>{[1,2,3,4,5].map(j=><div key={j} style={{width:4,height:j<=Math.round(fh)?"18px":"7px",borderRadius:2,background:j<=Math.round(fh)?color:"rgba(255,255,255,0.05)",boxShadow:j<=Math.round(fh)?`0 0 6px ${color}88`:"none"}}/>)}</div>
+          </div>;
+        })}
+      </div>}
+
+      {/* ── PROFILE ── */}
+      {screen==="profile"&&<div style={{padding:"14px 20px 50px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+          <button onClick={()=>goTo("map")} style={{background:"none",border:"none",color:"#FF0055",fontSize:22,cursor:"pointer"}}>←</button>
+          <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:28,fontWeight:700,color:"white"}}>Profile</div>
+        </div>
+        {!user?<div style={{textAlign:"center",padding:"40px 0"}}>
+          <div style={{fontSize:60,marginBottom:20}}>👤</div>
+          <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:24,color:"white",marginBottom:10}}>Create an account</div>
+          <div style={{color:"#444",fontFamily:"sans-serif",fontSize:14,lineHeight:1.7,marginBottom:28}}>Sign up to save your points, track your spots, and unlock rewards.</div>
+          <button className="btn-p" onClick={()=>goTo("auth")}>Sign Up 🔥</button>
+        </div>:<>
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{width:88,height:88,borderRadius:"50%",background:"linear-gradient(135deg,#FF0055,#FF6B00)",margin:"0 auto 14px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:38,boxShadow:"0 0 50px rgba(255,0,85,0.42)"}}>👤</div>
+            <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:22,color:"white",fontWeight:700}}>{profile?.username||user.email?.split("@")[0]||"Spotter"}</div>
+            <div style={{color:"#2a2a35",fontFamily:"sans-serif",fontSize:13,marginTop:4}}>{user.email}</div>
+          </div>
+          <div style={{background:"linear-gradient(135deg,rgba(255,0,85,0.11),rgba(255,107,0,0.06))",borderRadius:24,padding:"24px",border:"1px solid rgba(255,0,85,0.16)",marginBottom:14,textAlign:"center"}}>
+            <div style={{color:"#FF0055",fontFamily:"sans-serif",fontSize:10,textTransform:"uppercase",letterSpacing:2.5,fontWeight:700,marginBottom:8}}>Total Points</div>
+            <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:58,fontWeight:700,color:"white",lineHeight:1,letterSpacing:"-2px"}}>{points.toLocaleString()}</div>
+            {REWARDS.find(r=>r.pts>points)&&<div style={{marginTop:14,background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"10px 16px",display:"inline-flex",alignItems:"center",gap:8}}><span style={{fontSize:16}}>{REWARDS.find(r=>r.pts>points).icon}</span><span style={{color:"#444",fontFamily:"sans-serif",fontSize:12}}>{(REWARDS.find(r=>r.pts>points).pts-points).toLocaleString()} pts to <span style={{color:"white",fontWeight:600}}>{REWARDS.find(r=>r.pts>points).label}</span></span></div>}
+          </div>
+          <div className="sl">Rewards</div>
+          {REWARDS.map((r,i)=>{
+            const unlocked=points>=r.pts;const progress=Math.min(points/r.pts,1);
+            return <div key={i} style={{background:unlocked?"rgba(255,0,85,0.06)":"rgba(255,255,255,0.02)",border:`1px solid ${unlocked?"rgba(255,0,85,0.18)":"rgba(255,255,255,0.05)"}`,borderRadius:20,padding:"16px",marginBottom:10,opacity:unlocked?1:0.65,transition:"all 0.3s"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+                <div style={{fontSize:26,width:42,height:42,background:unlocked?"rgba(255,0,85,0.08)":"rgba(255,255,255,0.03)",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{r.icon}</div>
+                <div style={{flex:1}}><div style={{color:unlocked?"white":"#444",fontFamily:"sans-serif",fontSize:14,fontWeight:700,marginBottom:2}}>{r.label}</div><div style={{color:"#1e1e28",fontFamily:"sans-serif",fontSize:11}}>{r.venues}</div></div>
+                <div style={{color:unlocked?"#FF0055":"#1e1e28",fontFamily:"sans-serif",fontSize:12,fontWeight:700}}>{r.pts.toLocaleString()} pts</div>
+              </div>
+              <div style={{height:3,background:"rgba(255,255,255,0.04)",borderRadius:2,marginBottom:10,overflow:"hidden"}}><div style={{height:"100%",width:`${progress*100}%`,background:unlocked?"linear-gradient(90deg,#FF0055,#FF6B00)":"rgba(255,255,255,0.08)",borderRadius:2,transition:"width 0.6s ease",boxShadow:unlocked?"0 0 8px rgba(255,0,85,0.5)":"none"}}/></div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:10,color:"#1e1e28",fontFamily:"sans-serif"}}>{unlocked?"Unlocked":`${(r.pts-points).toLocaleString()} pts to go`}</div>
+                {unlocked&&<button onClick={()=>showToast(`${r.label} claimed! Show at venue 🎉`,"🎟")} style={{background:"linear-gradient(135deg,#FF0055,#FF6B00)",color:"white",border:"none",borderRadius:100,padding:"7px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"sans-serif",boxShadow:"0 3px 14px rgba(255,0,85,0.38)"}}>Redeem</button>}
+              </div>
+            </div>;
+          })}
+          <div style={{height:14}}/>
+          <button className="btn-s" style={{width:"100%",marginBottom:14,fontSize:13}} onClick={()=>{setUser(null);setProfile(null);showToast("Signed out","👋");goTo("map");}}>Sign Out</button>
+          <div style={{background:"linear-gradient(145deg,#0e0820,#0a0a1c)",borderRadius:24,padding:"24px",border:"1px solid rgba(120,60,255,0.16)"}}>
+            <div style={{fontSize:24,marginBottom:12}}>💜</div>
+            <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:22,color:"white",fontWeight:700,marginBottom:8}}>Ready for the real thing?</div>
+            <div style={{color:"#333",fontFamily:"sans-serif",fontSize:14,lineHeight:1.8,marginBottom:18}}>You have spotted the hotties. Let us introduce you properly.</div>
+            <button className="btn-s" style={{fontSize:13}} onClick={()=>showToast("MatchHaus coming soon 💜","✨")}>Explore MatchHaus →</button>
+          </div>
+        </>}
+      </div>}
+
+      {/* ── NAV ── */}
+      {["map","wink","profile","tonight"].includes(screen)&&<div className="nav-bar">
+        {[["map","🗺️","Map"],["spot","📍","Spot"],["wink","😉","Wink"],["profile","👤","Me"]].map(([s,icon,label])=><div key={s} className="nav-item" onClick={()=>{if(s==="spot"){setSpotStep(0);setSpotData({location:null,type:null,note:"",flirt:""});}goTo(s);}}>
+          <span className="nav-icon">{icon}</span>
+          <span className={`nav-label ${screen===s?"active":""}`}>{label}</span>
+        </div>)}
+      </div>}
+
+    </div>
+  </div>
+</div>
+```
+
+);
+}
+
+ReactDOM.createRoot(document.getElementById(‘root’)).render(
+React.createElement(HottieSpottie)
+);
+</script>
+
+</body>
+</html>
